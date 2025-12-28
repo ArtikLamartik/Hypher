@@ -1,3 +1,4 @@
+import subprocess
 import sys
 import os
 import re
@@ -39,6 +40,8 @@ def main(content:str, outputdir:str):
     currentfile:str = ""
     currentbits:str = ""
     currentorg:str = ""
+    compileline:str = ""
+    bdiskline:str = ""
     while index < len(content):
         line = content[index]
         original_line = line
@@ -46,7 +49,15 @@ def main(content:str, outputdir:str):
         indent = gi(original_line)
         if p(stripped_line, "#"):
             stripped_line = c(stripped_line, "#")
-            if p(stripped_line, "file"):
+            if p(stripped_line, "compile"):
+                compileline = c(stripped_line, "compile[")
+                index += 1
+                continue
+            elif p(stripped_line, "bdisk"):
+                bdiskline = c(stripped_line, "bdisk[")
+                index += 1
+                continue
+            elif p(stripped_line, "file"):
                 stripped_line = c(stripped_line, "file[")
                 match = s(stripped_line, r"(.*?)\]")
                 if match:
@@ -56,7 +67,7 @@ def main(content:str, outputdir:str):
             elif p(stripped_line, "bits"):
                 stripped_line = c(stripped_line, "bits[")
                 match = s(stripped_line, r"(.*?)\]")
-                if match:
+                if match and currentfile:
                     bits:str = match.group(1)
                     currentbits = bits
                     with open(currentfile, "a") as file:
@@ -64,12 +75,12 @@ def main(content:str, outputdir:str):
             elif p(stripped_line, "org"):
                 stripped_line = c(stripped_line, "org[")
                 match = s(stripped_line, r"(.*?)\]")
-                if match:
+                if match and currentfile:
                     org:str = match.group(1)
                     currentorg = org
                     with open(currentfile, "a") as file:
                         file.write(f"[ORG {org}]\n")
-        elif p(stripped_line, "$"):
+        elif p(stripped_line, "$") and currentfile:
             stripped_line = c(stripped_line, "$")
             if p(stripped_line, "bootableid;"):
                 with open(currentfile, "a") as file:
@@ -87,7 +98,7 @@ def main(content:str, outputdir:str):
             elif p(stripped_line, "exit;"):
                 with open(currentfile, "a") as file:
                     file.write(f"{indent}cli\n{indent}hlt\n")
-        elif p(stripped_line, "%"):
+        elif p(stripped_line, "%") and currentfile:
             stripped_line = c(stripped_line, "%")
             if p(stripped_line, "use"):
                 stripped_line = c(stripped_line, "use[")
@@ -99,7 +110,7 @@ def main(content:str, outputdir:str):
             elif p(stripped_line, "macro") or p(stripped_line, "endmacro"):
                 with open(currentfile, "a") as file:
                     file.write(f"{line}")
-        elif p(stripped_line, "@"):
+        elif p(stripped_line, "@") and currentfile:
             stripped_line = c(stripped_line, "@")
             match = s(stripped_line, r"(.*?)\(\);")
             match2 = s(stripped_line, r"(.*?)\((.*?)\);")
@@ -112,14 +123,14 @@ def main(content:str, outputdir:str):
                 args:str = match2.group(2)
                 with open(currentfile, "a") as file:
                     file.write(f"{indent}{macroname} {args}\n")
-        elif p(stripped_line, "fn"):
+        elif p(stripped_line, "fn") and currentfile:
             stripped_line = c(stripped_line, "fn ")
             match = s(stripped_line, r"(.*?)\(\):")
             if match:
                 funcname:str = match.group(1)
                 with open(currentfile, "a") as file:
                     file.write(f"{funcname}:\n")
-        elif p(stripped_line, "let"):
+        elif p(stripped_line, "let") and currentfile:
             stripped_line = c(stripped_line, "let ")
             match = s(stripped_line, r"(.*?):(.*?) = ([^\[\]]*?);(?:\s*(?![\"']|$))*$")
             match2 = s(stripped_line, r"(.*?):(.*?) = (.*?)\[\];(?:\s*(?![\"']|$))*$")
@@ -146,13 +157,33 @@ def main(content:str, outputdir:str):
                 vartype = rvs(reservesize)
                 with open(currentfile, "a") as file:
                     file.write(f"{reservename} {vartype} {reservecount} dup({reservevalue})\n")
-        elif stripped_line:
+        elif stripped_line and currentfile:
             with open(currentfile, "a") as file:
                 file.write(f"{original_line}")
         else:
-            with open(currentfile, "a") as file:
-                file.write(f"{line}")
+            if line != "" and currentfile:
+                with open(currentfile, "a") as file:
+                    file.write(f"{line}")
         index += 1
+    compilematch = s(compileline, r"(.*?)\]\[(.*?)\]")
+    if compilematch:
+        asmfiles:list = compilematch.group(1).split(", ")
+        buildfolder:str = compilematch.group(2)
+        subprocess.run(["mkdir", "-p", buildfolder], check=True)
+        for asmfile in asmfiles:
+            binfilename = os.path.basename(asmfile).replace(".asm", ".bin")
+            binfilepath = buildfolder + "/" + binfilename
+            subprocess.run(["nasm", "-f", "bin", asmfile, "-o", binfilepath], check=True)
+    bdiskmatch = s(bdiskline, r"(.*?)\]\[(.*?)\]\[(.*?)\]")
+    if bdiskmatch:
+        diskfile:str = bdiskmatch.group(1)
+        disksize:int = int(eval(bdiskmatch.group(2)))
+        binfiles:list = bdiskmatch.group(3).split(", ")
+        with open(diskfile, "wb") as disk:
+            for binfile in binfiles:
+                with open(binfile, "rb") as binfl:
+                    disk.write(binfl.read())
+            disk.write(b"\x00" * (disksize - disk.tell()))
 
 if __name__ == "__main__":
     if len(sys.argv) != 3:
