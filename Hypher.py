@@ -113,9 +113,9 @@ def main(content:str, outputdir:str):
                 if match:
                     macroname:str = match.group(1)
                     macroargsize:int = int(eval(match.group(2)))
-                    macrocode:list = match.group(3).split("\\n")
+                    macrocode:list = match.group(3).replace("\\t\\", "\t").split("\\n\\")
                     with open(currentfile, "a") as file:
-                        file.write(f"%macro {macroname} {macroargsize}\n")
+                        file.write(f"%macro macro_{macroname} {macroargsize}\n")
                         for macrolines in macrocode:
                             file.write(f"    {macrolines}\n")
                         file.write("%endmacro\n")
@@ -124,7 +124,7 @@ def main(content:str, outputdir:str):
                     file.write(f"{line}")
         elif p(stripped_line, "@") and currentfile:
             stripped_line = c(stripped_line, "@")
-            match = s(stripped_line, r"(.*?)\(\);")
+            match = s(stripped_line, r"(.*?)(!\(\));")
             match2 = s(stripped_line, r"(.*?)\((.*?)\);")
             if match:
                 funcname:str = match.group(1)
@@ -134,7 +134,7 @@ def main(content:str, outputdir:str):
                 macroname:str = match2.group(1)
                 args:str = match2.group(2)
                 with open(currentfile, "a") as file:
-                    file.write(f"{indent}{macroname} {args}\n")
+                    file.write(f"{indent}macro_{macroname} {args}\n")
         elif p(stripped_line, "fn") and currentfile:
             stripped_line = c(stripped_line, "fn ")
             match = s(stripped_line, r"(.*?)\(\):")
@@ -197,14 +197,11 @@ def main(content:str, outputdir:str):
                     disk.write(binfl.read())
             disk.write(b"\x00" * (disksize - disk.tell()))
 
-if __name__ == "__main__":
-    if len(sys.argv) != 3:
-        print("Usage: python main.py <filename> <output dir>")
-        sys.exit(1)
-
-    filename:str = sys.argv[1]
-    outputdir:str = sys.argv[2]
-
-    with open(filename, "r") as file:
-        content:str = file.readlines()
-        main(content, outputdir)
+if len(sys.argv) != 3:
+    print("Usage: python main.py <filename> <output dir>")
+    sys.exit(1)
+filename:str = sys.argv[1]
+outputdir:str = sys.argv[2]
+with open(filename, "r") as file:
+    content:str = file.readlines()
+    main(content, outputdir)
