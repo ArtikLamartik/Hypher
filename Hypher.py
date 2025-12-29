@@ -107,6 +107,18 @@ def main(content:str, outputdir:str):
                     filename:str = match.group(1)
                     with open(currentfile, "a") as file:
                         file.write(f"{indent}%include \"{filename}\"\n")
+            elif p(stripped_line, "def"):
+                stripped_line = c(stripped_line, "def[")
+                match = s(stripped_line, r"(.*?)\]\[(.*?)\]\[(.*?)\];")
+                if match:
+                    macroname:str = match.group(1)
+                    macroargsize:int = int(eval(match.group(2)))
+                    macrocode:list = match.group(3).split("\\n")
+                    with open(currentfile, "a") as file:
+                        file.write(f"%macro {macroname} {macroargsize}\n")
+                        for macrolines in macrocode:
+                            file.write(f"    {macrolines}\n")
+                        file.write("%endmacro\n")
             elif p(stripped_line, "macro") or p(stripped_line, "endmacro"):
                 with open(currentfile, "a") as file:
                     file.write(f"{line}")
