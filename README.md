@@ -1,5 +1,6 @@
 # Hypher
 Programming language designed to compile to x86 ASM/NASM
 
-Special Thanks for ideas to:
-1.https://github.com/thinker227
+Special Thanks for ideas to
+
+https://github.com/thinker227
