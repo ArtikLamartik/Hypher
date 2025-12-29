@@ -108,8 +108,8 @@ def main(content:str, outputdir:str):
                     with open(currentfile, "a") as file:
                         file.write(f"{indent}%include \"{filename}\"\n")
             elif p(stripped_line, "def"):
-                stripped_line = c(stripped_line, "def[")
-                match = s(stripped_line, r"(.*?)\]\[(.*?)\]\[(.*?)\];")
+                stripped_line = c(stripped_line, "def ")
+                match = s(stripped_line, r"(.*?)\s*\[(.*?)\]\s*->\s*{\s*(.*?)};")
                 if match:
                     macroname:str = match.group(1)
                     macroargsize:int = int(eval(match.group(2)))
