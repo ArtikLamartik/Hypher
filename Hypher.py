@@ -37,6 +37,8 @@ def rrs(reservesize:int):
 
 def main(content:str, outputdir:str):
     index:int = 0
+    ifindex:int = 0
+    inifindex:int = 0
     currentfile:str = ""
     currentbits:str = ""
     currentorg:str = ""
@@ -50,31 +52,31 @@ def main(content:str, outputdir:str):
         if p(stripped_line, "#"):
             stripped_line = c(stripped_line, "#")
             if p(stripped_line, "compile"):
-                compileline = c(stripped_line, "compile[")
+                compileline = c(stripped_line, "compile")
                 index += 1
                 continue
             elif p(stripped_line, "bdisk"):
-                bdiskline = c(stripped_line, "bdisk[")
+                bdiskline = c(stripped_line, "bdisk")
                 index += 1
                 continue
             elif p(stripped_line, "file"):
-                stripped_line = c(stripped_line, "file[")
-                match = s(stripped_line, r"(.*?)\]")
+                stripped_line = c(stripped_line, "file")
+                match = s(stripped_line, r"\s*\[(.*?)\]")
                 if match:
                     filename:str = match.group(1)
                     currentfile = outputdir + "/" + filename
                     cf(currentfile)
             elif p(stripped_line, "bits"):
-                stripped_line = c(stripped_line, "bits[")
-                match = s(stripped_line, r"(.*?)\]")
+                stripped_line = c(stripped_line, "bits")
+                match = s(stripped_line, r"\s*\[(.*?)\]")
                 if match and currentfile:
                     bits:str = match.group(1)
                     currentbits = bits
                     with open(currentfile, "a") as file:
                         file.write(f"[BITS {bits}]\n")
             elif p(stripped_line, "org"):
-                stripped_line = c(stripped_line, "org[")
-                match = s(stripped_line, r"(.*?)\]")
+                stripped_line = c(stripped_line, "org")
+                match = s(stripped_line, r"\s*\[(.*?)\]")
                 if match and currentfile:
                     org:str = match.group(1)
                     currentorg = org
@@ -86,8 +88,8 @@ def main(content:str, outputdir:str):
                 with open(currentfile, "a") as file:
                     file.write(f"{indent}times 510 - ($ - $$) db 0\n{indent}db 0x55, 0xAA\n")
             elif p(stripped_line, "boot16"):
-                stripped_line = c(stripped_line, "boot16[")
-                match = s(stripped_line, r"(.*?)\];")
+                stripped_line = c(stripped_line, "boot16")
+                match = s(stripped_line, r"\s*\[(.*?)\];")
                 if match:
                     addr:str = match.group(1)
                     with open(currentfile, "a") as file:
@@ -101,8 +103,8 @@ def main(content:str, outputdir:str):
         elif p(stripped_line, "%") and currentfile:
             stripped_line = c(stripped_line, "%")
             if p(stripped_line, "use"):
-                stripped_line = c(stripped_line, "use[")
-                match = s(stripped_line, r"(.*?)\];")
+                stripped_line = c(stripped_line, "use")
+                match = s(stripped_line, r"\s*\[(.*?)\];")
                 if match:
                     filename:str = match.group(1)
                     with open(currentfile, "a") as file:
@@ -124,29 +126,29 @@ def main(content:str, outputdir:str):
                     file.write(f"{line}")
         elif p(stripped_line, "@") and currentfile:
             stripped_line = c(stripped_line, "@")
-            match = s(stripped_line, r"(.*?)(!\(\));")
-            match2 = s(stripped_line, r"(.*?)\((.*?)\);")
+            match = s(stripped_line, r"(.*?)\s*\((.*?)\);")
+            match2 = s(stripped_line, r"([^\(\)]*);")
             if match:
-                funcname:str = match.group(1)
-                with open(currentfile, "a") as file:
-                    file.write(f"{indent}call {funcname}\n")
-            elif match2:
-                macroname:str = match2.group(1)
-                args:str = match2.group(2)
+                macroname:str = match.group(1)
+                args:str = match.group(2)
                 with open(currentfile, "a") as file:
                     file.write(f"{indent}macro_{macroname} {args}\n")
+            elif match2:
+                funcname:str = match2.group(1)
+                with open(currentfile, "a") as file:
+                    file.write(f"{indent}call {funcname}\n")
         elif p(stripped_line, "fn") and currentfile:
             stripped_line = c(stripped_line, "fn ")
-            match = s(stripped_line, r"(.*?)\(\):")
+            match = s(stripped_line, r"(.*?)\s*\(\):")
             if match:
                 funcname:str = match.group(1)
                 with open(currentfile, "a") as file:
                     file.write(f"{funcname}:\n")
         elif p(stripped_line, "let") and currentfile:
             stripped_line = c(stripped_line, "let ")
-            match = s(stripped_line, r"(.*?):(.*?) = ([^\[\]]*?);(?:\s*(?![\"']|$))*$")
-            match2 = s(stripped_line, r"(.*?):(.*?) = (.*?)\[\];(?:\s*(?![\"']|$))*$")
-            match3 = s(stripped_line, r"(.*?):(.*?) = (.*?)\[(.*?)\];(?:\s*(?![\"']|$))*$")
+            match = s(stripped_line, r"(.*?)\s*:\s*(.*?)\s*=\s*([^\[\]]*?);(?:\s*(?![\"']|$))*$")
+            match2 = s(stripped_line, r"(.*?)\s*:\s*(.*?)\s*=\s*(.*?)\[\];(?:\s*(?![\"']|$))*$")
+            match3 = s(stripped_line, r"(.*?)\s*:\s*(.*?)\s*=\s*(.*?)\[(.*?)\];(?:\s*(?![\"']|$))*$")
             if match:
                 varname:str = match.group(1)
                 varsize:int = int(match.group(2))
@@ -169,6 +171,61 @@ def main(content:str, outputdir:str):
                 vartype = rvs(reservesize)
                 with open(currentfile, "a") as file:
                     file.write(f"{reservename} {vartype} {reservecount} dup({reservevalue})\n")
+        elif p(stripped_line, "if") and currentfile:
+            stripped_line = c(stripped_line, "if")
+            match = s(stripped_line, r"\s*\(\s*(.*?)\s*([<>=!]+)\s*(.*?)\s*\):")
+            if match:
+                operand1 = match.group(1)
+                operator = match.group(2)
+                operand2 = match.group(3)
+                with open(currentfile, "a") as file:
+                    file.write(f"{indent}cmp {operand1}, {operand2}\n")
+                    jump_map = {
+                        "==": "jne",
+                        "!=": "je",
+                        "<=": "jg",
+                        ">=": "jl",
+                        "<<": "jge",
+                        ">>": "jle"
+                    }
+                    if operator in jump_map:
+                        label = f"next_inif_{inifindex}"
+                        file.write(f"{indent}{jump_map[operator]} {label}\n")
+        elif p(stripped_line, "elif") and currentfile:
+            stripped_line = c(stripped_line, "elif")
+            match = s(stripped_line, r"\s*\(\s*(.*?)\s*([<>=!]+)\s*(.*?)\s*\):")
+            if match:
+                operand1 = match.group(1)
+                operator = match.group(2)
+                operand2 = match.group(3)
+                with open(currentfile, "a") as file:
+                    file.write(f"{indent}jmp endall_{ifindex}\n")
+                    file.write(f"{indent}next_inif_{inifindex}:\n")
+                    file.write(f"{indent}cmp {operand1}, {operand2}\n")
+                    jump_map = {
+                        "==": "jne",
+                        "!=": "je",
+                        "<=": "jg",
+                        ">=": "jl",
+                        "<<": "jge",
+                        ">>": "jle"
+                    }
+                    inifindex += 1
+                    if operator in jump_map:
+                        label = f"next_inif_{inifindex}"
+                        file.write(f"{indent}{jump_map[operator]} {label}\n")
+        elif p(stripped_line, "else:") and currentfile:
+            with open(currentfile, "a") as file:
+                file.write(f"{indent}jmp endall_{ifindex}\n")
+                file.write(f"{indent}next_inif_{inifindex}:\n")
+        elif p(stripped_line, "endif;") and currentfile:
+            with open(currentfile, "r") as file:
+                if f"next_inif_{inifindex}:" not in file.read():
+                    with open(currentfile, "a") as file1:
+                        file1.write(f"{indent}next_inif_{inifindex}:\n")
+            with open(currentfile, "a") as file:
+                file.write(f"{indent}endall_{ifindex}:\n")
+            ifindex += 1
         elif stripped_line and currentfile:
             with open(currentfile, "a") as file:
                 file.write(f"{original_line}")
@@ -177,7 +234,7 @@ def main(content:str, outputdir:str):
                 with open(currentfile, "a") as file:
                     file.write(f"{line}")
         index += 1
-    compilematch = s(compileline, r"(.*?)\]\[(.*?)\]")
+    compilematch = s(compileline, r"\s*\[(.*?)\]\s*\[(.*?)\]")
     if compilematch:
         asmfiles:list = compilematch.group(1).split(", ")
         buildfolder:str = compilematch.group(2)
@@ -186,7 +243,7 @@ def main(content:str, outputdir:str):
             binfilename = os.path.basename(asmfile).replace(".asm", ".bin")
             binfilepath = buildfolder + "/" + binfilename
             subprocess.run(["nasm", "-f", "bin", asmfile, "-o", binfilepath], check=True)
-    bdiskmatch = s(bdiskline, r"(.*?)\]\[(.*?)\]\[(.*?)\]")
+    bdiskmatch = s(bdiskline, r"\s*\[(.*?)\]\s*\[(.*?)\]\s*\[(.*?)\]")
     if bdiskmatch:
         diskfile:str = bdiskmatch.group(1)
         disksize:int = int(eval(bdiskmatch.group(2)))
