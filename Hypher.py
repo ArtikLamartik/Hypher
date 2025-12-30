@@ -39,11 +39,14 @@ def main(content:str, outputdir:str):
     index:int = 0
     ifindex:int = 0
     inifindex:int = 0
+    loopindex:int = 0
     currentfile:str = ""
     currentbits:str = ""
     currentorg:str = ""
     compileline:str = ""
     bdiskline:str = ""
+    if_stack = []
+    loop_stack = []
     while index < len(content):
         line = content[index]
         original_line = line
@@ -178,6 +181,9 @@ def main(content:str, outputdir:str):
                 operand1 = match.group(1)
                 operator = match.group(2)
                 operand2 = match.group(3)
+                current_if = ifindex
+                current_inif = inifindex
+                if_stack.append((current_if, current_inif))
                 with open(currentfile, "a") as file:
                     file.write(f"{indent}cmp {operand1}, {operand2}\n")
                     jump_map = {
@@ -189,18 +195,22 @@ def main(content:str, outputdir:str):
                         ">>": "jle"
                     }
                     if operator in jump_map:
-                        label = f"next_inif_{inifindex}"
+                        label = f"next_inif_{current_inif}"
                         file.write(f"{indent}{jump_map[operator]} {label}\n")
+                ifindex += 1
+                inifindex += 1
         elif p(stripped_line, "elif") and currentfile:
             stripped_line = c(stripped_line, "elif")
             match = s(stripped_line, r"\s*\(\s*(.*?)\s*([<>=!]+)\s*(.*?)\s*\):")
-            if match:
+            if match and if_stack:
                 operand1 = match.group(1)
                 operator = match.group(2)
                 operand2 = match.group(3)
+                current_if, prev_inif = if_stack[-1]
+                current_inif = inifindex
                 with open(currentfile, "a") as file:
-                    file.write(f"{indent}jmp endall_{ifindex}\n")
-                    file.write(f"{indent}next_inif_{inifindex}:\n")
+                    file.write(f"{indent}jmp endif_{current_if}\n")
+                    file.write(f"{indent}next_inif_{prev_inif}:\n")
                     file.write(f"{indent}cmp {operand1}, {operand2}\n")
                     jump_map = {
                         "==": "jne",
@@ -210,22 +220,43 @@ def main(content:str, outputdir:str):
                         "<<": "jge",
                         ">>": "jle"
                     }
-                    inifindex += 1
                     if operator in jump_map:
-                        label = f"next_inif_{inifindex}"
+                        label = f"next_inif_{current_inif}"
                         file.write(f"{indent}{jump_map[operator]} {label}\n")
+                if_stack[-1] = (current_if, current_inif)
+                inifindex += 1
         elif p(stripped_line, "else:") and currentfile:
-            with open(currentfile, "a") as file:
-                file.write(f"{indent}jmp endall_{ifindex}\n")
-                file.write(f"{indent}next_inif_{inifindex}:\n")
+            if if_stack:
+                current_if, prev_inif = if_stack[-1]
+                with open(currentfile, "a") as file:
+                    file.write(f"{indent}jmp endif_{current_if}\n")
+                    file.write(f"{indent}next_inif_{prev_inif}:\n")
         elif p(stripped_line, "endif;") and currentfile:
-            with open(currentfile, "r") as file:
-                if f"next_inif_{inifindex}:" not in file.read():
-                    with open(currentfile, "a") as file1:
-                        file1.write(f"{indent}next_inif_{inifindex}:\n")
+            if if_stack:
+                current_if, current_inif = if_stack.pop()
+                with open(currentfile, "r") as file:
+                    if f"next_inif_{current_inif}:" not in file.read():
+                        with open(currentfile, "a") as file1:
+                            file1.write(f"{indent}next_inif_{current_inif}:\n")
+                with open(currentfile, "a") as file:
+                    file.write(f"{indent}endif_{current_if}:\n")
+        elif p(stripped_line, "loop:") and currentfile:
+            current_loop = loopindex
+            loop_stack.append(current_loop)
             with open(currentfile, "a") as file:
-                file.write(f"{indent}endall_{ifindex}:\n")
-            ifindex += 1
+                file.write(f"{indent}loop_{current_loop}:\n")
+            loopindex += 1
+        elif p(stripped_line, "break;") and currentfile:
+            if loop_stack:
+                current_loop = loop_stack[-1]
+                with open(currentfile, "a") as file:
+                    file.write(f"{indent}jmp endloop_{current_loop}\n")
+        elif p(stripped_line, "endloop;") and currentfile:
+            if loop_stack:
+                current_loop = loop_stack.pop()
+                with open(currentfile, "a") as file:
+                    file.write(f"{indent}jmp loop_{current_loop}\n")
+                    file.write(f"{indent}endloop_{current_loop}:\n")
         elif stripped_line and currentfile:
             with open(currentfile, "a") as file:
                 file.write(f"{original_line}")
