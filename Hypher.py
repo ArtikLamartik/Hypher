@@ -286,7 +286,7 @@ def main(content:str, outputdir:str):
             disk.write(b"\x00" * (disksize - disk.tell()))
 
 if len(sys.argv) != 3:
-    print("Usage: python main.py <filename> <output dir>")
+    print("Usage: python Hypher.py <filename> <output dir>")
     sys.exit(1)
 filename:str = sys.argv[1]
 outputdir:str = sys.argv[2]
