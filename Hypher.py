@@ -40,6 +40,8 @@ def main(content:str, outputdir:str):
     ifindex:int = 0
     inifindex:int = 0
     loopindex:int = 0
+    looptype:int = 0
+    loopreverse:int = 0
     currentfile:str = ""
     currentbits:str = ""
     currentorg:str = ""
@@ -240,23 +242,70 @@ def main(content:str, outputdir:str):
                             file1.write(f"{indent}next_inif_{current_inif}:\n")
                 with open(currentfile, "a") as file:
                     file.write(f"{indent}endif_{current_if}:\n")
-        elif p(stripped_line, "loop:") and currentfile:
-            current_loop = loopindex
-            loop_stack.append(current_loop)
-            with open(currentfile, "a") as file:
-                file.write(f"{indent}loop_{current_loop}:\n")
-            loopindex += 1
+        elif p(stripped_line, "loop") and currentfile:
+            match1 = s(stripped_line, r"\s*\(\s*(.*?)\s*\):")
+            match2 = s(stripped_line, r"\s*\(\s*\):")
+            if match1:
+                iteration:str = match1.group(1)
+                matchiteration = s(iteration, r"(.*?)\.\.(.*)")
+                looptype = 1
+                current_loop = loopindex
+                loop_stack.append(current_loop)
+                if matchiteration:
+                    iteration1:int = int(matchiteration.group(1), 0)
+                    iteration2:int = int(matchiteration.group(2), 0)
+                    if iteration1 < iteration2:
+                        loopreverse = 0
+                    elif iteration1 > iteration2:
+                        loopreverse = 1
+                    with open(currentfile, "a") as file:
+                        file.write(f"{indent}mov cx, {iteration1}\n")
+                        file.write(f"{indent}loop_{current_loop}:\n")
+                        file.write(f"{indent}cmp cx, {iteration2}\n")
+                        file.write(f"{indent}je endloop_{current_loop}\n")
+                        file.write(f"{indent}push cx\n")
+                else:
+                    with open(currentfile, "a") as file:
+                        file.write(f"{indent}mov cx, 0\n")
+                        file.write(f"{indent}loop_{current_loop}:\n")
+                        file.write(f"{indent}cmp cx, {iteration}\n")
+                        file.write(f"{indent}je endloop_{current_loop}\n")
+                        file.write(f"{indent}push cx\n")
+                loopindex += 1
+            elif match2:
+                looptype = 0
+                current_loop = loopindex
+                loop_stack.append(current_loop)
+                with open(currentfile, "a") as file:
+                    file.write(f"{indent}loop_{current_loop}:\n")
+                loopindex += 1
         elif p(stripped_line, "break;") and currentfile:
-            if loop_stack:
+            if loop_stack and looptype == 0:
+                current_loop = loop_stack[-1]
+                with open(currentfile, "a") as file:
+                    file.write(f"{indent}jmp endloop_{current_loop}\n")
+            elif loop_stack and looptype == 1:
                 current_loop = loop_stack[-1]
                 with open(currentfile, "a") as file:
                     file.write(f"{indent}jmp endloop_{current_loop}\n")
         elif p(stripped_line, "endloop;") and currentfile:
-            if loop_stack:
+            if loop_stack and looptype == 0:
                 current_loop = loop_stack.pop()
                 with open(currentfile, "a") as file:
                     file.write(f"{indent}jmp loop_{current_loop}\n")
                     file.write(f"{indent}endloop_{current_loop}:\n")
+            elif loop_stack and looptype == 1:
+                current_loop = loop_stack.pop()
+                with open(currentfile, "a") as file:
+                    file.write(f"{indent}pop cx\n")
+                    if loopreverse == 0:
+                        file.write(f"{indent}inc cx\n")
+                    elif loopreverse == 1:
+                        file.write(f"{indent}dec cx\n")
+                    file.write(f"{indent}jmp loop_{current_loop}\n")
+                    file.write(f"{indent}endloop_{current_loop}:\n")
+        elif p(stripped_line, "//") and currentfile:
+            pass
         elif stripped_line and currentfile:
             with open(currentfile, "a") as file:
                 file.write(f"{original_line}")
